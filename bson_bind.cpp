@@ -165,6 +165,7 @@ namespace
     out << "#include <string>" << endl;
     out << "#include <vector>" << endl;
     out << "#include <bson.h>" << endl;
+    out << "#include <bson_bind/option.hpp>" << endl;
     
     for(const auto &c : ms)
     {
@@ -183,27 +184,42 @@ namespace
     assert(!m.type.empty());
     assert(!m.name.empty());
     
-    out << "    " << (m.vec ? "std::vector<" + m.type + ">" : m.type) << " " << m.name << ";" << endl;
+    out << "    ";
+    if(!m.required) out << "bson_bind::option<";
+    out << (m.vec ? "std::vector<" + m.type + ">" : m.type);
+    if(!m.required) out << ">";
+    out << " " << m.name << ";" << endl;
   }
   
   string bson_append_primitive(conv_member m, const string key_override = string(), const string value_override = string(), const std::string &doc = string("ret"))
   {
     stringstream out;
-    if(!value_override.empty()) m.name = value_override;
+
+    string call = m.name;
+    if(!value_override.empty())
+    {
+      m.name = value_override;
+      call = m.name;
+    }
+    else
+    {
+      if(!m.required) call += ".unwrap()";
+    }
+      
     if(m.ext)
     {
-      out << "bson_append_document(" << doc << ", " << (key_override.empty() ? "\"" + m.name + "\"" : key_override) << ", -1, " << m.name << ".bind());";
+      out << "bson_append_document(" << doc << ", " << (key_override.empty() ? "\"" + m.name + "\"" : key_override) << ", -1, " << call << ".bind());";
     }
     else if(m.type == "std::string")
     {
-      out << "bson_append_utf8(" << doc << ", " << (key_override.empty() ? "\"" + m.name + "\"" : key_override) <<", -1, " << m.name << ".c_str(), -1);";
+      out << "bson_append_utf8(" << doc << ", " << (key_override.empty() ? "\"" + m.name + "\"" : key_override) <<", -1, " << call << ".c_str(), -1);";
     }
     else
     {
       if(m.type[0] == 'i' || m.type[0] == 'u') out << "bson_append_int32";
       else if(m.type == "bool") out << "bson_append_bool";
       else if(m.type == "float" || m.type == "double") out << "bson_append_double";
-      out << "(" << doc << ", " << (key_override.empty() ? "\"" + m.name + "\"" : key_override) << ", -1, " << m.name << ");";
+      out << "(" << doc << ", " << (key_override.empty() ? "\"" + m.name + "\"" : key_override) << ", -1, " << call << ");";
     }
     return out.str();
   }
@@ -267,17 +283,32 @@ namespace
     {
       if(m.vec)
       {
+        if(!m.required)
+        {
+          out << "      if(" << m.name << ".some()) {" << endl;
+        }
         out << "      arr = bson_new();" << endl
             << "      i = 0;" << endl
-            << "      for(vector<" << m.type << ">::const_iterator it = " << m.name << ".begin();" << endl
-            << "          it != " << m.name << ".end(); ++it, ++i)" << endl
+            << "      for(vector<" << m.type << ">::const_iterator it = " << m.name << (m.required ? "" : ".unwrap()") << ".begin();" << endl
+            << "          it != " << m.name << (m.required ? "" : ".unwrap()") << ".end(); ++it, ++i)" << endl
             << "        " << bson_append_primitive(m, "std::to_string(i).c_str()", "(*it)", "arr") << endl
             << "      bson_append_array(ret, \"" << m.name << "\", -1, arr);" << endl
             << "      bson_destroy(arr);";
+        if(!m.required)
+        {
+          out << endl << "      }";
+        }
       }
       else
       {
-        out << "      " << bson_append_primitive(m);
+        if(!m.required)
+        {
+          out << "      if(" << m.name << ".some()) " << bson_append_primitive(m);
+        }
+        else
+        {
+          out << "      " << bson_append_primitive(m);
+        }
       }
       out << endl;
     }
@@ -313,14 +344,19 @@ namespace
       if(m.vec)
       {
         out << "        arr = bson_new_from_data(v->value.v_doc.data, v->value.v_doc.data_len);" << endl
-            << "        i = 0;" << endl
-            << "        for(;; ++i) {" << endl
+            << "        i = 0;" << endl;
+        if(!m.required)
+        {
+          string full = m.vec ? "std::vector<" + m.type + ">" : m.type;
+          out << "        ret." << m.name << " = bson_bind::some<" << full << " >(" << full << "());" << endl;
+        }
+        out << "        for(;; ++i) {" << endl
             << "          if(!bson_iter_init_find(&itt, arr, std::to_string(i).c_str())) break;" << endl
             << "          v = bson_iter_value(&itt);" << endl
             << "          " << bson_type_check(m, false, true) << " throw std::invalid_argument(\"key " << m.name << " child has the wrong type\");" << endl
             << "          " << m.type << " tmp;" << endl
             << "          " << bson_read_primitive(m, "", "tmp") << endl
-            << "          ret." << m.name << ".push_back(tmp);" << endl
+            << "          ret." << m.name << (m.required ? "" : ".unwrap()") << ".push_back(tmp);" << endl
             << "        }" << endl
             << "        bson_destroy(arr);" << endl;
       }
