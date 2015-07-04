@@ -63,9 +63,10 @@ namespace
       cerr << "Name is empty on line " << line_num << endl;
     }
     
-    m.type = elems[0];
+    
     if((m.required = elems[1].size() > 1 && elems[1].back() == '!')) elems[1] = elems[1].substr(0, elems[1].size() - 1);
-    if((m.vec = elems[1].size() > 2 && elems[1].substr(elems[1].size() - 2) == "[]")) elems[1] = elems[1].substr(0, elems[1].size() - 2);
+    if((m.vec = elems[0].size() > 2 && elems[0].substr(elems[0].size() - 2) == "[]")) elems[0] = elems[0].substr(0, elems[0].size() - 2);
+    m.type = elems[0];
     m.name = elems[1];
     
     return true;
@@ -165,6 +166,7 @@ namespace
     out << "#include <string>" << endl;
     out << "#include <vector>" << endl;
     out << "#include <bson.h>" << endl;
+    out << "#include <cstring>" << endl;
     out << "#include <bson_bind/option.hpp>" << endl;
     
     for(const auto &c : ms)
@@ -216,7 +218,8 @@ namespace
     }
     else
     {
-      if(m.type[0] == 'i' || m.type[0] == 'u') out << "bson_append_int32";
+      if(m.type == "int8_t" || m.type == "uint8_t") out << "bson_append_int8";
+      else if(m.type[0] == 'i' || m.type[0] == 'u') out << "bson_append_int32";
       else if(m.type == "bool") out << "bson_append_bool";
       else if(m.type == "float" || m.type == "double") out << "bson_append_double";
       out << "(" << doc << ", " << (key_override.empty() ? "\"" + m.name + "\"" : key_override) << ", -1, " << call << ");";
@@ -232,9 +235,13 @@ namespace
     {
       out << "BSON_TYPE_DOCUMENT";
     }
-    else if(vec_check && m.vec)
+    else if(vec_check && m.vec && m.type != "uint8_t")
     {
       out << "BSON_TYPE_ARRAY";
+    }
+    else if(m.vec && m.type == "uint8_t")
+    {
+      out << "BSON_TYPE_BINARY";
     }
     else if(m.type == "std::string")
     {
@@ -242,7 +249,8 @@ namespace
     }
     else
     {
-      if(m.type[0] == 'i' || m.type[0] == 'u') out << "BSON_TYPE_INT32";
+      if(m.type == "int8_t" || m.type == "uint8_t") out << "BSON_TYPE_INT8";
+      else if(m.type[0] == 'i' || m.type[0] == 'u') out << "BSON_TYPE_INT32";
       else if(m.type == "bool") out << "BSON_TYPE_BOOL";
       else if(m.type == "float" || m.type == "double") out << "BSON_TYPE_DOUBLE";
     }
@@ -266,7 +274,8 @@ namespace
     }
     else
     {
-      if(m.type[0] == 'i' || m.type[0] == 'u') out << (r.empty() ? "" : r + ".") << m.name << " = v->value.v_int32;";
+      if(m.type == "int8_t" || m.type == "uint8_t") out << (r.empty() ? "" : r + ".") << m.name << " = v->value.v_int8;";
+      else if(m.type[0] == 'i' || m.type[0] == 'u') out << (r.empty() ? "" : r + ".") << m.name << " = v->value.v_int32;";
       else if(m.type == "bool") out << (r.empty() ? "" : r + ".") << m.name << " = v->value.v_bool;";
       else if(m.type == "float" || m.type == "double") out << (r.empty() ? "" : r + ".") << m.name << " = v->value.v_double;";
     }
@@ -281,7 +290,7 @@ namespace
         << "      uint32_t i = 0;" << endl;
     for(const auto &m : ms)
     {
-      if(m.vec)
+      if(m.vec && m.type != "uint8_t")
       {
         if(!m.required)
         {
@@ -294,6 +303,20 @@ namespace
             << "        " << bson_append_primitive(m, "std::to_string(i).c_str()", "(*it)", "arr") << endl
             << "      bson_append_array(ret, \"" << m.name << "\", -1, arr);" << endl
             << "      bson_destroy(arr);";
+        if(!m.required)
+        {
+          out << endl << "      }";
+        }
+      }
+      else if(m.vec && m.type == "uint8_t")
+      {
+        if(!m.required)
+        {
+          out << "      if(" << m.name << ".some()) {" << endl;
+        }
+        const string call = m.name + (m.required ? "" : ".unwrap()");
+        out << "      bson_append_binary(ret, \"" << m.name << "\", -1, BSON_SUBTYPE_BINARY, "
+            << call << ".data(), " << call << ".size());" << endl;
         if(!m.required)
         {
           out << endl << "      }";
@@ -341,7 +364,7 @@ namespace
       }
       out << "        v = bson_iter_value(&it);" << endl
           << "        " << bson_type_check(m, true,  true) << " throw std::invalid_argument(\"key " << m.name << " has the wrong type\");" << endl;
-      if(m.vec)
+      if(m.vec && m.type != "uint8_t")
       {
         out << "        arr = bson_new_from_data(v->value.v_doc.data, v->value.v_doc.data_len);" << endl
             << "        i = 0;" << endl;
@@ -359,6 +382,19 @@ namespace
             << "          ret." << m.name << (m.required ? "" : ".unwrap()") << ".push_back(tmp);" << endl
             << "        }" << endl
             << "        bson_destroy(arr);" << endl;
+      }
+      else if(m.vec && m.type == "uint8_t")
+      {
+        string full = m.vec ? "std::vector<" + m.type + ">" : m.type;
+        if(!m.required)
+        {
+          out << "        ret." << m.name << " = bson_bind::some(" << full << "(v->value.v_binary.data_len));" << endl;
+        }
+        else
+        {
+          out << "        ret." << m.name << ".resize(v->value.v_binary.data_len);" << endl;
+        }
+        out << "        memcpy(ret." << m.name << ".data(), v->value.v_binary.data, v->value.v_binary.data_len);" << endl;
       }
       else
       {
