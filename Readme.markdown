@@ -43,6 +43,8 @@ real64
 string
 ```
 
+*Note: A uint8[] is stored as a BSON binary blob*
+
 Usage
 =====
 
