@@ -5,6 +5,7 @@
 #include <cassert>
 #include <vector>
 #include <unordered_map>
+#include <stdexcept>
 
 using namespace std;
 
@@ -166,11 +167,12 @@ namespace
     out << "#include <cstdint>" << endl;
     out << "#include <string>" << endl;
     out << "#include <vector>" << endl;
+    out << "#include <bson.h>" << endl;
     
     out << endl;
     
     out << "namespace bson_bind {" << endl;
-    out << "  struct " << name << "{" << endl;
+    out << "  struct " << name << " {" << endl;
   }
   
   void output_member(ostream &out, const conv_member &m)
@@ -181,9 +183,10 @@ namespace
     out << "    " << (m.vec ? "std::vector<" + m.type + ">" : m.type) << " " << m.name << ";" << endl;
   }
   
-  string bson_append_primitive(const conv_member &m, const string key_override = string())
+  string bson_append_primitive(conv_member m, const string key_override = string(), const string value_override = string())
   {
     stringstream out;
+    if(!value_override.empty()) m.name = value_override;
     if(m.type == "std::string")
     {
       out << "bson_append_utf8(ret, " << (key_override.empty() ? "\"" + m.name + "\"" : key_override) <<", -1, " << m.name << ".c_str(), -1);";
@@ -198,22 +201,62 @@ namespace
     return out.str();
   }
   
+  string bson_type_check(const conv_member &m, bool vec_check, bool negate)
+  {
+    stringstream out;
+    out << "if(v->value_type " << (negate ? "!=" : "==") << " ";
+    if(vec_check && m.vec)
+    {
+      out << "BSON_TYPE_ARRAY";
+    }
+    else if(m.type == "std::string")
+    {
+      out << "BSON_TYPE_UTF8";
+    }
+    else
+    {
+      if(m.type[0] == 'i' || m.type[0] == 'u') out << "BSON_TYPE_INT32";
+      else if(m.type == "bool") out << "BSON_TYPE_BOOL";
+      else if(m.type == "float" || m.type == "double") out << "BSON_TYPE_DOUBLE";
+    }
+    out << ")";
+    return out.str();
+  }
+  
+  string bson_read_primitive(conv_member m, const string &name_override = string())
+  {
+    if(!name_override.empty()) m.name = name_override;
+    stringstream out;
+    if(m.type == "std::string")
+    {
+      out << m.name << " = std::string(v->value.v_utf8.str, v->value.v_utf8.len);";
+    }
+    else
+    {
+      if(m.type[0] == 'i' || m.type[0] == 'u') out << m.name << " = v->value.v_int32;";
+      else if(m.type == "bool") out << m.name << " = v->value.v_bool;";
+      else if(m.type == "float" || m.type == "double") out << m.name << " = v->value.v_double;";
+    }
+    return out.str();
+  }
+  
   void output_bind(ostream &out, const vector<conv_member> &ms)
   {
-    out << "    static bson_t *bind() {" << endl
+    out << "    bson_t *bind() {" << endl
         << "      bson_t *ret = bson_new();" << endl
-        << "      bson_t arr;" << endl
+        << "      bson_t *arr;" << endl
         << "      uint32_t i = 0;" << endl;
     for(const auto &m : ms)
     {
       if(m.vec)
       {
-        out << "      bson_init_static(&arr);" << endl
+        out << "      arr = bson_new();" << endl
             << "      i = 0;" << endl
             << "      for(vector<" << m.type << ">::const_iterator it = " << m.name << ".begin();" << endl
             << "          it != " << m.name << ".end(); ++it, ++i)" << endl
-            << "        " << bson_append_primitive(m, "to_string(i)") << endl
-            << "      bson_destroy(&arr);";
+            << "        " << bson_append_primitive(m, "std::to_string(i).c_str()", "(*it)") << endl
+            << "      bson_append_document(ret, \"" << m.name << "\", -1, arr);" << endl
+            << "      bson_destroy(arr);";
       }
       else
       {
@@ -225,9 +268,52 @@ namespace
         << "    }" << endl;
   }
   
-  void output_unbind(ostream &out, const vector<conv_member> &ms)
+  void output_unbind(ostream &out, const vector<conv_member> &ms, const std::string &name)
   {
-    
+    out << "    static " << name << " unbind(const bson_t *const bson) {" << endl
+        << "      bson_iter_t it;" << endl
+        << "      bson_iter_t itt;" << endl
+        << "      uint32_t i = 0;" << endl
+        << "      bool found;" << endl
+        << "      const bson_value_t *v;" << endl
+        << "      bson_t *arr;" << endl
+        << "      " << name << " ret;" << endl;
+    for(const auto &m : ms)
+    {
+      out << "      found = bson_iter_init_find(&it, bson, \"" << m.name << "\");" << endl;
+      if(m.required)
+      {
+        out << "      if(!found) throw std::invalid_argument(\"required key " << m.name << " not found in bson document\");" << endl
+            << "      else {" << endl;
+      }
+      else
+      {
+        out << "      if(found) {" << endl;
+      }
+      out << "        v = bson_iter_value(&it);" << endl
+          << "        " << bson_type_check(m, true,  true) << " throw std::invalid_argument(\"key " << m.name << " has the wrong type\");" << endl;
+      if(m.vec)
+      {
+        out << "        arr = bson_new_from_data(v->value.v_doc.data, v->value.v_doc.data_len);" << endl
+            << "        i = 0;" << endl
+            << "        for(;; ++i) {" << endl
+            << "          if(!bson_iter_init_find(&itt, arr, std::to_string(i).c_str())) break;" << endl
+            << "          v = bson_iter_value(&itt);" << endl
+            << "          " << bson_type_check(m, false, true) << " throw std::invalid_argument(\"key " << m.name << " has the wrong type\");" << endl
+            << "          " << m.type << " tmp;" << endl
+            << "          " << bson_read_primitive(m, "tmp") << endl
+            << "          ret." << m.name << ".push_back(tmp);" << endl
+            << "        }" << endl
+            << "        bson_destroy(arr);" << endl;
+      }
+      else
+      {
+        out << "        ret." << bson_read_primitive(m) << endl;
+      }
+      out << "      }" << endl;
+    }
+    out << "      return ret;" << endl
+        << "    }" << endl;
   }
   
   void output_footer(ostream &out)
@@ -239,11 +325,12 @@ namespace
   
   void output_file(ostream &out, const vector<member> &ms, const string &name)
   {
-    output_header(out, filename(name));
+    const auto realname = filename(name);
+    output_header(out, realname);
     const auto conv = convert_members(ms);
     for(const auto &c : conv) output_member(out, c);
     output_bind(out, conv);
-    output_unbind(out, conv);
+    output_unbind(out, conv, realname);
     output_footer(out);
   }
 }
