@@ -298,7 +298,7 @@ namespace
         }
         out << "      arr = bson_new();" << endl
             << "      i = 0;" << endl
-            << "      for(vector<" << m.type << ">::const_iterator it = " << m.name << (m.required ? "" : ".unwrap()") << ".begin();" << endl
+            << "      for(std::vector<" << m.type << ">::const_iterator it = " << m.name << (m.required ? "" : ".unwrap()") << ".begin();" << endl
             << "          it != " << m.name << (m.required ? "" : ".unwrap()") << ".end(); ++it, ++i)" << endl
             << "        " << bson_append_primitive(m, "std::to_string(i).c_str()", "(*it)", "arr") << endl
             << "      bson_append_array(ret, \"" << m.name << "\", -1, arr);" << endl
