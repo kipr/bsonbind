@@ -37,6 +37,7 @@ namespace
   {
     bool required;
     bool vec;
+    bool ext;
     string type;
     string name;
   };
@@ -135,16 +136,12 @@ namespace
     };
     
     auto it = conversions.find(m.type);
-    if(it == conversions.end())
-    {
-      cerr << "No such type \"" << m.type << "\"" << endl;
-      return conv_member();
-    }
     
     conv_member ret;
     ret.required = m.required;
     ret.vec = m.vec;
-    ret.type = it->second;
+    ret.ext = it == conversions.end();
+    ret.type = ret.ext ? m.type : it->second;
     ret.name = m.name;
     return ret;
   }
@@ -156,7 +153,7 @@ namespace
     return ret;
   }
   
-  void output_header(ostream &out, const string &name)
+  void output_header(ostream &out, const string &name, const vector<conv_member> &ms)
   {
     assert(!name.empty());
     
@@ -169,13 +166,19 @@ namespace
     out << "#include <vector>" << endl;
     out << "#include <bson.h>" << endl;
     
+    for(const auto &c : ms)
+    {
+      if(!c.ext) continue;
+      out << "#include \"" << c.type << ".hpp\"" << endl;
+    }
+    
     out << endl;
     
     out << "namespace bson_bind {" << endl;
     out << "  struct " << name << " {" << endl;
   }
   
-  void output_member(ostream &out, const conv_member &m)
+  void output_member(ostream &out, conv_member m)
   {
     assert(!m.type.empty());
     assert(!m.name.empty());
@@ -187,7 +190,11 @@ namespace
   {
     stringstream out;
     if(!value_override.empty()) m.name = value_override;
-    if(m.type == "std::string")
+    if(m.ext)
+    {
+      out << "bson_append_document(" << doc << ", " << (key_override.empty() ? "\"" + m.name + "\"" : key_override) << ", -1, " << m.name << ".bind());";
+    }
+    else if(m.type == "std::string")
     {
       out << "bson_append_utf8(" << doc << ", " << (key_override.empty() ? "\"" + m.name + "\"" : key_override) <<", -1, " << m.name << ".c_str(), -1);";
     }
@@ -205,7 +212,11 @@ namespace
   {
     stringstream out;
     out << "if(v->value_type " << (negate ? "!=" : "==") << " ";
-    if(vec_check && m.vec)
+    if(m.ext)
+    {
+      out << "BSON_TYPE_DOCUMENT";
+    }
+    else if(vec_check && m.vec)
     {
       out << "BSON_TYPE_ARRAY";
     }
@@ -223,19 +234,25 @@ namespace
     return out.str();
   }
   
-  string bson_read_primitive(conv_member m, const string &name_override = string())
+  string bson_read_primitive(conv_member m, const string &r, const string &name_override = string())
   {
     if(!name_override.empty()) m.name = name_override;
     stringstream out;
-    if(m.type == "std::string")
+    if(m.ext)
     {
-      out << m.name << " = std::string(v->value.v_utf8.str, v->value.v_utf8.len);";
+      out << "d = bson_new_from_buffer(v->value.v_doc.data, v->value.v_doc.data_len); "
+          << (r.empty() ? "" : r + ".") << m.name << " = " << m.type << "::unbind(d); "
+          << "bson_destroy(d);";
+    }
+    else if(m.type == "std::string")
+    {
+      out << (r.empty() ? "" : r + ".") << m.name << " = std::string(v->value.v_utf8.str, v->value.v_utf8.len);";
     }
     else
     {
-      if(m.type[0] == 'i' || m.type[0] == 'u') out << m.name << " = v->value.v_int32;";
-      else if(m.type == "bool") out << m.name << " = v->value.v_bool;";
-      else if(m.type == "float" || m.type == "double") out << m.name << " = v->value.v_double;";
+      if(m.type[0] == 'i' || m.type[0] == 'u') out << (r.empty() ? "" : r + ".") << m.name << " = v->value.v_int32;";
+      else if(m.type == "bool") out << (r.empty() ? "" : r + ".") << m.name << " = v->value.v_bool;";
+      else if(m.type == "float" || m.type == "double") out << (r.empty() ? "" : r + ".") << m.name << " = v->value.v_double;";
     }
     return out.str();
   }
@@ -277,6 +294,7 @@ namespace
         << "      bool found;" << endl
         << "      const bson_value_t *v;" << endl
         << "      bson_t *arr;" << endl
+        << "      bson_t *d;" << endl
         << "      " << name << " ret;" << endl;
     for(const auto &m : ms)
     {
@@ -301,14 +319,14 @@ namespace
             << "          v = bson_iter_value(&itt);" << endl
             << "          " << bson_type_check(m, false, true) << " throw std::invalid_argument(\"key " << m.name << " child has the wrong type\");" << endl
             << "          " << m.type << " tmp;" << endl
-            << "          " << bson_read_primitive(m, "tmp") << endl
+            << "          " << bson_read_primitive(m, "", "tmp") << endl
             << "          ret." << m.name << ".push_back(tmp);" << endl
             << "        }" << endl
             << "        bson_destroy(arr);" << endl;
       }
       else
       {
-        out << "        ret." << bson_read_primitive(m) << endl;
+        out << "        " << bson_read_primitive(m, "ret") << endl;
       }
       out << "      }" << endl;
     }
@@ -326,8 +344,10 @@ namespace
   void output_file(ostream &out, const vector<member> &ms, const string &name)
   {
     const auto realname = filename(name);
-    output_header(out, realname);
+    
     const auto conv = convert_members(ms);
+    
+    output_header(out, realname, conv);
     for(const auto &c : conv) output_member(out, c);
     output_bind(out, conv);
     output_unbind(out, conv, realname);
