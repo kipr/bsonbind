@@ -2,7 +2,7 @@ bson_bind
 =========
 
 
-BSON bind is a utility that generates C++ structs for descriptions of BSON. Currently, BSON bind does not support sub-documents.
+BSON bind is a utility that generates C++ structs for descriptions of BSON.
 
 File format
 ===========
@@ -13,6 +13,10 @@ File format
  type2 key2!
  # This is an array
  type3[] key3
+ 
+ # This is a sub-document. Note: this type must have its own description file and matching hpp header.
+ # Generation of this description must be done by the user
+ my_great_type key4
 ```
 
 Note: Empty lines and lines beginning with `#` are ignored.
