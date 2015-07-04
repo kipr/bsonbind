@@ -26,17 +26,19 @@ namespace
   
   struct member
   {
+    bool vec;
     bool required;
     string type;
     string name;
   };
   
-  vector<member> convert_members(const vector<member> &ms)
+  struct conv_member
   {
-    vector<member> ret;
-    for(const auto &m : ms) ret.push_back(convert_member(m));
-    return ret;
-  }
+    bool required;
+    bool vec;
+    string type;
+    string name;
+  };
   
   bool process_line(const string &line, const uint32_t line_num, member &m)
   {
@@ -60,8 +62,9 @@ namespace
     }
     
     m.type = elems[0];
-    if((m.required = elems[1].size() > 1 && m.name[m.size() - 1] == '!')) m.name = elems[1].substr(0, elems[1].size() - 1);
-    else m.name = elems[1];
+    if((m.required = elems[1].size() > 1 && elems[1].back() == '!')) elems[1] = elems[1].substr(0, elems[1].size() - 1);
+    if((m.vec = elems[1].size() > 2 && elems[1].substr(elems[1].size() - 2) == "[]")) elems[1] = elems[1].substr(0, elems[1].size() - 2);
+    m.name = elems[1];
     
     return true;
   }
@@ -110,45 +113,45 @@ namespace
     return remove_extension(basename(file));
   }
   
-  string last(uint32_t n, const std::string &s)
+  string last(const uint32_t n, const std::string &s)
   {
-    return s.substr(s.size() - n, 0);
+    return s.substr(s.size() - n);
   }
   
-  member convert_member(member m)
+  conv_member convert_member(member m)
   {
     unordered_map<string, string> conversions = {
-      {"float32", "float"},
-      {"float64", "double"},
+      {"real32", "float"},
+      {"real64", "double"},
       {"int32", "int32_t"},
-      {"int64", "int64_t"},
       {"int16", "int16_t"},
       {"int8", "int8_t"},
       {"bool", "bool"},
       {"uint32", "uint32_t"},
-      {"uint64", "uint64_t"},
       {"uint16", "uint16_t"},
       {"uint8", "uint8_t"},
       {"string", "std::string"}
     };
     
-    bool vec = false;
-    if((vec = m.type.size() > 2 && last(2, m.type) == "[]"))
-    {
-      m.type = m.type.substr(0, m.type.size() - 2);
-    }
-    
     auto it = conversions.find(m.type);
     if(it == conversions.end())
     {
       cerr << "No such type \"" << m.type << "\"" << endl;
-      return member();
+      return conv_member();
     }
     
-    member ret;
-    ret.required = m/required;
-    ret.type = vec ? "std::vector<" + it->second + ">" : it->second;
+    conv_member ret;
+    ret.required = m.required;
+    ret.vec = m.vec;
+    ret.type = it->second;
     ret.name = m.name;
+    return ret;
+  }
+  
+  vector<conv_member> convert_members(const vector<member> &ms)
+  {
+    vector<conv_member> ret;
+    for(const auto &m : ms) ret.push_back(convert_member(m));
     return ret;
   }
   
@@ -170,21 +173,59 @@ namespace
     out << "  struct " << name << "{" << endl;
   }
   
-  void output_member(ostream &out, const std::string &type, const std::string &name)
+  void output_member(ostream &out, const conv_member &m)
   {
-    assert(!type.empty());
-    assert(!name.empty());
+    assert(!m.type.empty());
+    assert(!m.name.empty());
     
-    out << "    " << type << " " << name << endl;
+    out << "    " << (m.vec ? "std::vector<" + m.type + ">" : m.type) << " " << m.name << ";" << endl;
   }
   
-  void output_bind(ostream &out, const vector<member> &ms)
+  string bson_append_primitive(const conv_member &m, const string key_override = string())
   {
-    out << "static bson_t bind() {" << endl;
-    out << ""
+    stringstream out;
+    if(m.type == "std::string")
+    {
+      out << "bson_append_utf8(ret, " << (key_override.empty() ? "\"" + m.name + "\"" : key_override) <<", -1, " << m.name << ".c_str(), -1);";
+    }
+    else
+    {
+      if(m.type[0] == 'i' || m.type[0] == 'u') out << "bson_append_int32";
+      else if(m.type == "bool") out << "bson_append_bool";
+      else if(m.type == "float" || m.type == "double") out << "bson_append_double";
+      out << "(ret, " << (key_override.empty() ? "\"" + m.name + "\"" : key_override) << ", -1, " << m.name << ");";
+    }
+    return out.str();
   }
   
-  void output_unbind(ostream &out, const vector<member> &ms)
+  void output_bind(ostream &out, const vector<conv_member> &ms)
+  {
+    out << "    static bson_t *bind() {" << endl
+        << "      bson_t *ret = bson_new();" << endl
+        << "      bson_t arr;" << endl
+        << "      uint32_t i = 0;" << endl;
+    for(const auto &m : ms)
+    {
+      if(m.vec)
+      {
+        out << "      bson_init_static(&arr);" << endl
+            << "      i = 0;" << endl
+            << "      for(vector<" << m.type << ">::const_iterator it = " << m.name << ".begin();" << endl
+            << "          it != " << m.name << ".end(); ++it, ++i)" << endl
+            << "        " << bson_append_primitive(m, "to_string(i)") << endl
+            << "      bson_destroy(&arr);";
+      }
+      else
+      {
+        out << "      " << bson_append_primitive(m);
+      }
+      out << endl;
+    }
+    out << "      return ret;" << endl
+        << "    }" << endl;
+  }
+  
+  void output_unbind(ostream &out, const vector<conv_member> &ms)
   {
     
   }
@@ -199,8 +240,8 @@ namespace
   void output_file(ostream &out, const vector<member> &ms, const string &name)
   {
     output_header(out, filename(name));
-    vector<member> conv = convert_members(ms);
-    for(const auto &c : conv) output_member(c);
+    const auto conv = convert_members(ms);
+    for(const auto &c : conv) output_member(out, c);
     output_bind(out, conv);
     output_unbind(out, conv);
     output_footer(out);
@@ -211,6 +252,11 @@ namespace
 int main(int argc, char *argv[])
 {
   vector<member> ms;
+  if(argc != 3)
+  {
+    cout << argv[0] << " input.bsonbind output.hpp" << endl;
+    return 1;
+  }
   
   {
     ifstream in(argv[1]);
@@ -230,8 +276,8 @@ int main(int argc, char *argv[])
       cerr << "Failed to open " << argv[2] << " for writing" << endl;
       return 1;
     }
-    output_bind(out, ms);
-    in.close();
+    output_file(out, ms, argv[2]);
+    out.close();
   }
   
   return 0;
