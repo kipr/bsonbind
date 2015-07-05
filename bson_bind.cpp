@@ -27,6 +27,7 @@ namespace
   
   struct member
   {
+    bool special;
     bool vec;
     bool required;
     string type;
@@ -46,7 +47,7 @@ namespace
   {
     vector<string> elems;
     split(line, ' ', elems);
-    if(elems.size() != 2)
+    if(elems.empty() || elems.size() > 2)
     {
       cerr << "Expected \"value name\" pair on line " << line_num << endl;
       return false;
@@ -58,16 +59,11 @@ namespace
       return false;
     }
     
-    if(elems[1].empty())
-    {
-      cerr << "Name is empty on line " << line_num << endl;
-    }
-    
-    
-    if((m.required = elems[1].size() > 1 && elems[1].back() == '!')) elems[1] = elems[1].substr(0, elems[1].size() - 1);
+    if((m.special = elems[0].size() > 1 && elems[0][0] == '%')) elems[0] = elems[0].substr(1);
+    if((m.required = elems.size() > 1 && elems[1].size() > 1 && elems[1].back() == '!')) elems[1] = elems[1].substr(0, elems[1].size() - 1);
     if((m.vec = elems[0].size() > 2 && elems[0].substr(elems[0].size() - 2) == "[]")) elems[0] = elems[0].substr(0, elems[0].size() - 2);
     m.type = elems[0];
-    m.name = elems[1];
+    m.name = elems.size() > 1 ? elems[1] : "";
     
     return true;
   }
@@ -154,7 +150,7 @@ namespace
     return ret;
   }
   
-  void output_header(ostream &out, const string &name, const vector<conv_member> &ms)
+  void output_header(ostream &out, const string &name, const vector<conv_member> &ms, const string &package = "bson_bind")
   {
     assert(!name.empty());
     
@@ -177,7 +173,7 @@ namespace
     
     out << endl;
     
-    out << "namespace bson_bind {" << endl;
+    out << "namespace " << package << " {" << endl;
     out << "  struct " << name << " {" << endl;
   }
   
@@ -416,13 +412,32 @@ namespace
   void output_file(ostream &out, const vector<member> &ms, const string &name)
   {
     const auto realname = filename(name);
+    string package = "bson_bind";
+    bool gen_bind = true;
+    bool gen_unbind = true;
+    auto rms = ms;
+    for(auto it = rms.begin(); it != rms.end();)
+    {
+      if(it->special)
+      {
+        if(it->type == "package") package = it->name;
+        else if(it->type == "nobind") gen_bind = false;
+        else if(it->type == "nounbind") gen_unbind = false;
+        else
+        {
+          cerr << "Warning: unrecognized directive " << it->type << endl;
+        }
+        it = rms.erase(it);
+        continue;
+      }
+      ++it;
+    }
+    const auto conv = convert_members(rms);
     
-    const auto conv = convert_members(ms);
-    
-    output_header(out, realname, conv);
+    output_header(out, realname, conv, package);
     for(const auto &c : conv) output_member(out, c);
-    output_bind(out, conv);
-    output_unbind(out, conv, realname);
+    if(gen_bind) output_bind(out, conv);
+    if(gen_unbind) output_unbind(out, conv, realname);
     output_footer(out);
   }
 }
