@@ -260,7 +260,7 @@ namespace
     stringstream out;
     if(m.ext)
     {
-      out << "d = bson_new_from_buffer(v->value.v_doc.data, v->value.v_doc.data_len); "
+      out << "d = bson_new_from_data(v->value.v_doc.data, v->value.v_doc.data_len); "
           << (r.empty() ? "" : r + ".") << m.name << " = " << m.type << "::unbind(d); "
           << "bson_destroy(d);";
     }
