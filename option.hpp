@@ -84,6 +84,14 @@ namespace bson_bind
       return *this;
     }
     
+    option<T> &operator =(const option<T> &rhs)
+    {
+      if(_some) reinterpret_cast<T *>(_t)->~T();
+      _some = rhs._some;
+      if(_some) new (_t) T(rhs.unwrap());
+      return *this;
+    }
+    
     option<T> &operator =(option<T> &&rhs)
     {
       if(_some) reinterpret_cast<T *>(_t)->~T();

@@ -402,6 +402,36 @@ namespace
         << "    }" << endl;
   }
   
+  void output_default(ostream &out, const string &name)
+  {
+    out << "    " << name << "() {}" << endl;
+  }
+  
+  void output_copy(ostream &out, const vector<conv_member> &ms, const string &name)
+  {
+    out << "    " << name << "(const " << name << " &rhs)" << endl;
+    bool first = true;
+    for(const auto &c : ms)
+    {
+      out << "      " << (first ? ":" : ",") << " " << c.name << "(rhs." << c.name << ")" << endl;
+      first = false;
+    }
+    out << "      {}" << endl;
+  }
+  
+  void output_assign(ostream &out, const vector<conv_member> &ms, const string &name)
+  {
+    out << "    " << name << " &operator =(const " << name << " &rhs) {" << endl;
+    bool first = true;
+    for(const auto &c : ms)
+    {
+      out << "      " << c.name << " = rhs." << c.name << ";" << endl;
+      first = false;
+    }
+    out << "      return *this;" << endl
+        << "    }" << endl;
+  }
+  
   void output_footer(ostream &out)
   {
     out << "  };" << endl;
@@ -415,6 +445,8 @@ namespace
     string package = "bson_bind";
     bool gen_bind = true;
     bool gen_unbind = true;
+    bool gen_copy = true;
+    bool gen_assign = true;
     auto rms = ms;
     for(auto it = rms.begin(); it != rms.end();)
     {
@@ -423,6 +455,8 @@ namespace
         if(it->type == "package") package = it->name;
         else if(it->type == "nobind") gen_bind = false;
         else if(it->type == "nounbind") gen_unbind = false;
+        else if(it->type == "nocopy") gen_copy = false;
+        else if(it->type == "noassign") gen_assign = false;
         else
         {
           cerr << "Warning: unrecognized directive " << it->type << endl;
@@ -438,6 +472,9 @@ namespace
     for(const auto &c : conv) output_member(out, c);
     if(gen_bind) output_bind(out, conv);
     if(gen_unbind) output_unbind(out, conv, realname);
+    output_default(out, realname);
+    if(gen_copy) output_copy(out, conv, realname);
+    if(gen_assign) output_assign(out, conv, realname);
     output_footer(out);
   }
 }
