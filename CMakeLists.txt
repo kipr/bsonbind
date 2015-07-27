@@ -9,4 +9,4 @@ add_executable(bson_bind bson_bind.cpp)
 add_definitions(-g)
 
 install(FILES option.hpp DESTINATION include/bson_bind)
-install(PROGRAMS ${CMAKE_BINARY_DIR}/bson_bind DESTINATION bin)
+install(TARGETS bson_bind DESTINATION bin)
