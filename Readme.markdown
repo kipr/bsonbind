@@ -4,6 +4,24 @@ bson_bind
 
 BSON bind is a utility that generates C++ structs for descriptions of BSON.
 
+Dependencies
+============
+* cmake > 2.8
+* c++ compiler with C++11 support
+
+Building
+========
+```
+mkdir build
+cd build
+cmake ..
+make
+make install
+```
+
+Useful cmake arguments:
+* `-DCMAKE_INSTALL_PREFIX=<install prefex>`, recommended for Windows
+
 File format
 ===========
 
