@@ -160,11 +160,11 @@ namespace
     out << "#ifndef _BSON_BIND_" << name << "_" << endl;
     out << "#define _BSON_BIND_" << name << "_" << endl << endl;
     
-    out << "#include <cstdint>" << endl;
+    out << "#include <stdint.h>" << endl;
     out << "#include <string>" << endl;
     out << "#include <vector>" << endl;
     out << "#include <bson.h>" << endl;
-    out << "#include <cstring>" << endl;
+    out << "#include <string.h>" << endl;
     out << "#include <bson_bind/option.hpp>" << endl;
     
     for(const auto &c : ms)
