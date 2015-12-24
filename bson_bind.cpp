@@ -161,6 +161,7 @@ namespace
     out << "#define _BSON_BIND_" << name << "_" << endl << endl;
     
     out << "#include <stdint.h>" << endl;
+    out << "#include <stdexcept>" << endl;
     out << "#include <string>" << endl;
     out << "#include <vector>" << endl;
     out << "#include <bson.h>" << endl;
@@ -229,13 +230,13 @@ namespace
   {
     stringstream out;
     out << "if(v->value_type " << (negate ? "!=" : "==") << " ";
-    if(m.ext)
-    {
-      out << "BSON_TYPE_DOCUMENT";
-    }
-    else if(vec_check && m.vec && m.type != "uint8_t")
+    if(vec_check && m.vec && m.type != "uint8_t")
     {
       out << "BSON_TYPE_ARRAY";
+    }
+    else if(m.ext)
+    {
+        out << "BSON_TYPE_DOCUMENT";
     }
     else if(m.vec && m.type == "uint8_t")
     {
@@ -255,263 +256,263 @@ namespace
     out << ")";
     return out.str();
   }
-  
-  string bson_read_primitive(conv_member m, const string &r, const string &name_override = string())
-  {
-    if(!name_override.empty()) m.name = name_override;
-    stringstream out;
-    if(m.ext)
+    
+    string bson_read_primitive(conv_member m, const string &r, const string &name_override = string())
     {
-      out << "d = bson_new_from_data(v->value.v_doc.data, v->value.v_doc.data_len); "
-          << (r.empty() ? "" : r + ".") << m.name << " = " << m.type << "::unbind(d); "
-          << "bson_destroy(d);";
-    }
-    else if(m.type == "std::string")
-    {
-      out << (r.empty() ? "" : r + ".") << m.name << " = std::string(v->value.v_utf8.str, v->value.v_utf8.len);";
-    }
-    else
-    {
-      if(m.type == "int8_t" || m.type == "uint8_t") out << (r.empty() ? "" : r + ".") << m.name << " = v->value.v_int8;";
-      else if(m.type[0] == 'i' || m.type[0] == 'u') out << (r.empty() ? "" : r + ".") << m.name << " = v->value.v_int32;";
-      else if(m.type == "bool") out << (r.empty() ? "" : r + ".") << m.name << " = v->value.v_bool;";
-      else if(m.type == "float" || m.type == "double") out << (r.empty() ? "" : r + ".") << m.name << " = v->value.v_double;";
-    }
-    return out.str();
-  }
-  
-  void output_bind(ostream &out, const vector<conv_member> &ms)
-  {
-    out << "    bson_t *bind() {" << endl
-        << "      bson_t *ret = bson_new();" << endl
-        << "      bson_t *arr;" << endl
-        << "      uint32_t i = 0;" << endl;
-    for(const auto &m : ms)
-    {
-      if(m.vec && m.type != "uint8_t")
+      if(!name_override.empty()) m.name = name_override;
+      stringstream out;
+      if(m.ext)
       {
-        if(!m.required)
-        {
-          out << "      if(" << m.name << ".some()) {" << endl;
-        }
-        out << "      arr = bson_new();" << endl
-            << "      i = 0;" << endl
-            << "      for(std::vector<" << m.type << ">::const_iterator it = " << m.name << (m.required ? "" : ".unwrap()") << ".begin();" << endl
-            << "          it != " << m.name << (m.required ? "" : ".unwrap()") << ".end(); ++it, ++i)" << endl
-            << "        " << bson_append_primitive(m, "std::to_string(i).c_str()", "(*it)", "arr") << endl
-            << "      bson_append_array(ret, \"" << m.name << "\", -1, arr);" << endl
-            << "      bson_destroy(arr);";
-        if(!m.required)
-        {
-          out << endl << "      }";
-        }
+        out << "d = bson_new_from_data(v->value.v_doc.data, v->value.v_doc.data_len); "
+            << (r.empty() ? "" : r + ".") << m.name << " = " << m.type << "::unbind(d); "
+            << "bson_destroy(d);";
       }
-      else if(m.vec && m.type == "uint8_t")
+      else if(m.type == "std::string")
       {
-        if(!m.required)
-        {
-          out << "      if(" << m.name << ".some()) {" << endl;
-        }
-        const string call = m.name + (m.required ? "" : ".unwrap()");
-        out << "      bson_append_binary(ret, \"" << m.name << "\", -1, BSON_SUBTYPE_BINARY, "
-            << call << ".data(), " << call << ".size());" << endl;
-        if(!m.required)
-        {
-          out << endl << "      }";
-        }
+        out << (r.empty() ? "" : r + ".") << m.name << " = std::string(v->value.v_utf8.str, v->value.v_utf8.len);";
       }
       else
       {
-        if(!m.required)
+        if(m.type == "int8_t" || m.type == "uint8_t") out << (r.empty() ? "" : r + ".") << m.name << " = v->value.v_int8;";
+        else if(m.type[0] == 'i' || m.type[0] == 'u') out << (r.empty() ? "" : r + ".") << m.name << " = v->value.v_int32;";
+        else if(m.type == "bool") out << (r.empty() ? "" : r + ".") << m.name << " = v->value.v_bool;";
+        else if(m.type == "float" || m.type == "double") out << (r.empty() ? "" : r + ".") << m.name << " = v->value.v_double;";
+      }
+      return out.str();
+    }
+    
+    void output_bind(ostream &out, const vector<conv_member> &ms)
+    {
+      out << "    bson_t *bind() {" << endl
+          << "      bson_t *ret = bson_new();" << endl
+          << "      bson_t *arr;" << endl
+          << "      uint32_t i = 0;" << endl;
+      for(const auto &m : ms)
+      {
+        if(m.vec && m.type != "uint8_t")
         {
-          out << "      if(" << m.name << ".some()) " << bson_append_primitive(m);
+          if(!m.required)
+          {
+            out << "      if(" << m.name << ".some()) {" << endl;
+          }
+          out << "      arr = bson_new();" << endl
+              << "      i = 0;" << endl
+              << "      for(std::vector<" << m.type << ">::iterator it = " << m.name << (m.required ? "" : ".unwrap()") << ".begin();" << endl
+              << "          it != " << m.name << (m.required ? "" : ".unwrap()") << ".end(); ++it, ++i)" << endl
+              << "        " << bson_append_primitive(m, "std::to_string(i).c_str()", "(*it)", "arr") << endl
+              << "      bson_append_array(ret, \"" << m.name << "\", -1, arr);" << endl
+              << "      bson_destroy(arr);";
+          if(!m.required)
+          {
+            out << endl << "      }";
+          }
+        }
+        else if(m.vec && m.type == "uint8_t")
+        {
+          if(!m.required)
+          {
+            out << "      if(" << m.name << ".some()) {" << endl;
+          }
+          const string call = m.name + (m.required ? "" : ".unwrap()");
+          out << "      bson_append_binary(ret, \"" << m.name << "\", -1, BSON_SUBTYPE_BINARY, "
+              << call << ".data(), " << call << ".size());" << endl;
+          if(!m.required)
+          {
+            out << endl << "      }";
+          }
         }
         else
         {
-          out << "      " << bson_append_primitive(m);
+          if(!m.required)
+          {
+            out << "      if(" << m.name << ".some()) " << bson_append_primitive(m);
+          }
+          else
+          {
+            out << "      " << bson_append_primitive(m);
+          }
         }
+        out << endl;
       }
-      out << endl;
+      out << "      return ret;" << endl
+          << "    }" << endl;
     }
-    out << "      return ret;" << endl
-        << "    }" << endl;
-  }
-  
-  void output_unbind(ostream &out, const vector<conv_member> &ms, const std::string &name)
-  {
-    out << "    static " << name << " unbind(const bson_t *const bson) {" << endl
-        << "      bson_iter_t it;" << endl
-        << "      bson_iter_t itt;" << endl
-        << "      uint32_t i = 0;" << endl
-        << "      bool found;" << endl
-        << "      const bson_value_t *v;" << endl
-        << "      bson_t *arr;" << endl
-        << "      bson_t *d;" << endl
-        << "      " << name << " ret;" << endl;
-    for(const auto &m : ms)
+    
+    void output_unbind(ostream &out, const vector<conv_member> &ms, const std::string &name)
     {
-      out << "      found = bson_iter_init_find(&it, bson, \"" << m.name << "\");" << endl;
-      if(m.required)
+      out << "    static " << name << " unbind(const bson_t *const bson) {" << endl
+          << "      bson_iter_t it;" << endl
+          << "      bson_iter_t itt;" << endl
+          << "      uint32_t i = 0;" << endl
+          << "      bool found;" << endl
+          << "      const bson_value_t *v;" << endl
+          << "      bson_t *arr;" << endl
+          << "      bson_t *d;" << endl
+          << "      " << name << " ret;" << endl;
+      for(const auto &m : ms)
       {
-        out << "      if(!found) throw std::invalid_argument(\"required key " << m.name << " not found in bson document\");" << endl
-            << "      else {" << endl;
-      }
-      else
-      {
-        out << "      if(found) {" << endl;
-      }
-      out << "        v = bson_iter_value(&it);" << endl
-          << "        " << bson_type_check(m, true,  true) << " throw std::invalid_argument(\"key " << m.name << " has the wrong type\");" << endl;
-      if(m.vec && m.type != "uint8_t")
-      {
-        out << "        arr = bson_new_from_data(v->value.v_doc.data, v->value.v_doc.data_len);" << endl
-            << "        i = 0;" << endl;
-        if(!m.required)
+        out << "      found = bson_iter_init_find(&it, bson, \"" << m.name << "\");" << endl;
+        if(m.required)
+        {
+          out << "      if(!found) throw std::invalid_argument(\"required key " << m.name << " not found in bson document\");" << endl
+              << "      else {" << endl;
+        }
+        else
+        {
+          out << "      if(found) {" << endl;
+        }
+        out << "        v = bson_iter_value(&it);" << endl
+            << "        " << bson_type_check(m, true,  true) << " throw std::invalid_argument(\"key " << m.name << " has the wrong type\");" << endl;
+        if(m.vec && m.type != "uint8_t")
+        {
+          out << "        arr = bson_new_from_data(v->value.v_doc.data, v->value.v_doc.data_len);" << endl
+              << "        i = 0;" << endl;
+          if(!m.required)
+          {
+            string full = m.vec ? "std::vector<" + m.type + ">" : m.type;
+            out << "        ret." << m.name << " = bson_bind::some<" << full << " >(" << full << "());" << endl;
+          }
+          out << "        for(;; ++i) {" << endl
+              << "          if(!bson_iter_init_find(&itt, arr, std::to_string(i).c_str())) break;" << endl
+              << "          v = bson_iter_value(&itt);" << endl
+              << "          " << bson_type_check(m, false, true) << " throw std::invalid_argument(\"key " << m.name << " child has the wrong type\");" << endl
+              << "          " << m.type << " tmp;" << endl
+              << "          " << bson_read_primitive(m, "", "tmp") << endl
+              << "          ret." << m.name << (m.required ? "" : ".unwrap()") << ".push_back(tmp);" << endl
+              << "        }" << endl
+              << "        bson_destroy(arr);" << endl;
+        }
+        else if(m.vec && m.type == "uint8_t")
         {
           string full = m.vec ? "std::vector<" + m.type + ">" : m.type;
-          out << "        ret." << m.name << " = bson_bind::some<" << full << " >(" << full << "());" << endl;
-        }
-        out << "        for(;; ++i) {" << endl
-            << "          if(!bson_iter_init_find(&itt, arr, std::to_string(i).c_str())) break;" << endl
-            << "          v = bson_iter_value(&itt);" << endl
-            << "          " << bson_type_check(m, false, true) << " throw std::invalid_argument(\"key " << m.name << " child has the wrong type\");" << endl
-            << "          " << m.type << " tmp;" << endl
-            << "          " << bson_read_primitive(m, "", "tmp") << endl
-            << "          ret." << m.name << (m.required ? "" : ".unwrap()") << ".push_back(tmp);" << endl
-            << "        }" << endl
-            << "        bson_destroy(arr);" << endl;
-      }
-      else if(m.vec && m.type == "uint8_t")
-      {
-        string full = m.vec ? "std::vector<" + m.type + ">" : m.type;
-        if(!m.required)
-        {
-          out << "        ret." << m.name << " = bson_bind::some(" << full << "(v->value.v_binary.data_len));" << endl;
+          if(!m.required)
+          {
+            out << "        ret." << m.name << " = bson_bind::some(" << full << "(v->value.v_binary.data_len));" << endl;
+          }
+          else
+          {
+            out << "        ret." << m.name << ".resize(v->value.v_binary.data_len);" << endl;
+          }
+          out << "        memcpy(ret." << m.name << ".data(), v->value.v_binary.data, v->value.v_binary.data_len);" << endl;
         }
         else
         {
-          out << "        ret." << m.name << ".resize(v->value.v_binary.data_len);" << endl;
+          out << "        " << bson_read_primitive(m, "ret") << endl;
         }
-        out << "        memcpy(ret." << m.name << ".data(), v->value.v_binary.data, v->value.v_binary.data_len);" << endl;
+        out << "      }" << endl;
       }
-      else
-      {
-        out << "        " << bson_read_primitive(m, "ret") << endl;
-      }
-      out << "      }" << endl;
+      out << "      return ret;" << endl
+          << "    }" << endl;
     }
-    out << "      return ret;" << endl
-        << "    }" << endl;
-  }
-  
-  void output_default(ostream &out, const string &name)
-  {
-    out << "    " << name << "() {}" << endl;
-  }
-  
-  void output_copy(ostream &out, const vector<conv_member> &ms, const string &name)
-  {
-    out << "    " << name << "(const " << name << " &rhs)" << endl;
-    bool first = true;
-    for(const auto &c : ms)
-    {
-      out << "      " << (first ? ":" : ",") << " " << c.name << "(rhs." << c.name << ")" << endl;
-      first = false;
-    }
-    out << "      {}" << endl;
-  }
-  
-  void output_assign(ostream &out, const vector<conv_member> &ms, const string &name)
-  {
-    out << "    " << name << " &operator =(const " << name << " &rhs) {" << endl;
-    bool first = true;
-    for(const auto &c : ms)
-    {
-      out << "      " << c.name << " = rhs." << c.name << ";" << endl;
-      first = false;
-    }
-    out << "      return *this;" << endl
-        << "    }" << endl;
-  }
-  
-  void output_footer(ostream &out)
-  {
-    out << "  };" << endl;
-    out << "}" << endl << endl;
-    out << "#endif" << endl;
-  }
-  
-  void output_file(ostream &out, const vector<member> &ms, const string &name)
-  {
-    const auto realname = filename(name);
-    string package = "bson_bind";
-    bool gen_bind = true;
-    bool gen_unbind = true;
-    bool gen_copy = true;
-    bool gen_assign = true;
-    auto rms = ms;
-    for(auto it = rms.begin(); it != rms.end();)
-    {
-      if(it->special)
-      {
-        if(it->type == "package") package = it->name;
-        else if(it->type == "nobind") gen_bind = false;
-        else if(it->type == "nounbind") gen_unbind = false;
-        else if(it->type == "nocopy") gen_copy = false;
-        else if(it->type == "noassign") gen_assign = false;
-        else
-        {
-          cerr << "Warning: unrecognized directive " << it->type << endl;
-        }
-        it = rms.erase(it);
-        continue;
-      }
-      ++it;
-    }
-    const auto conv = convert_members(rms);
     
-    output_header(out, realname, conv, package);
-    for(const auto &c : conv) output_member(out, c);
-    if(gen_bind) output_bind(out, conv);
-    if(gen_unbind) output_unbind(out, conv, realname);
-    output_default(out, realname);
-    if(gen_copy) output_copy(out, conv, realname);
-    if(gen_assign) output_assign(out, conv, realname);
-    output_footer(out);
+    void output_default(ostream &out, const string &name)
+    {
+      out << "    " << name << "() {}" << endl;
+    }
+    
+    void output_copy(ostream &out, const vector<conv_member> &ms, const string &name)
+    {
+      out << "    " << name << "(const " << name << " &rhs)" << endl;
+      bool first = true;
+      for(const auto &c : ms)
+      {
+        out << "      " << (first ? ":" : ",") << " " << c.name << "(rhs." << c.name << ")" << endl;
+        first = false;
+      }
+      out << "      {}" << endl;
+    }
+    
+    void output_assign(ostream &out, const vector<conv_member> &ms, const string &name)
+    {
+      out << "    " << name << " &operator =(const " << name << " &rhs) {" << endl;
+      bool first = true;
+      for(const auto &c : ms)
+      {
+        out << "      " << c.name << " = rhs." << c.name << ";" << endl;
+        first = false;
+      }
+      out << "      return *this;" << endl
+          << "    }" << endl;
+    }
+    
+    void output_footer(ostream &out)
+    {
+      out << "  };" << endl;
+      out << "}" << endl << endl;
+      out << "#endif" << endl;
+    }
+    
+    void output_file(ostream &out, const vector<member> &ms, const string &name)
+    {
+      const auto realname = filename(name);
+      string package = "bson_bind";
+      bool gen_bind = true;
+      bool gen_unbind = true;
+      bool gen_copy = true;
+      bool gen_assign = true;
+      auto rms = ms;
+      for(auto it = rms.begin(); it != rms.end();)
+      {
+        if(it->special)
+        {
+          if(it->type == "package") package = it->name;
+          else if(it->type == "nobind") gen_bind = false;
+          else if(it->type == "nounbind") gen_unbind = false;
+          else if(it->type == "nocopy") gen_copy = false;
+          else if(it->type == "noassign") gen_assign = false;
+          else
+          {
+            cerr << "Warning: unrecognized directive " << it->type << endl;
+          }
+          it = rms.erase(it);
+          continue;
+        }
+        ++it;
+      }
+      const auto conv = convert_members(rms);
+      
+      output_header(out, realname, conv, package);
+      for(const auto &c : conv) output_member(out, c);
+      if(gen_bind) output_bind(out, conv);
+      if(gen_unbind) output_unbind(out, conv, realname);
+      output_default(out, realname);
+      if(gen_copy) output_copy(out, conv, realname);
+      if(gen_assign) output_assign(out, conv, realname);
+      output_footer(out);
+    }
   }
-}
 
 
-int main(int argc, char *argv[])
-{
-  vector<member> ms;
-  if(argc != 3)
+  int main(int argc, char *argv[])
   {
-    cout << argv[0] << " input.bsonbind output.hpp" << endl;
-    return 1;
-  }
-  
-  {
-    ifstream in(argv[1]);
-    if(!in.is_open())
+    vector<member> ms;
+    if(argc != 3)
     {
-      cerr << "Failed to open " << argv[1] << " for reading" << endl;
+      cout << argv[0] << " input.bsonbind output.hpp" << endl;
       return 1;
     }
-    process_file(in, ms);
-    in.close();
-  }
-  
-  {
-    ofstream out(argv[2]);
-    if(!out.is_open())
+    
     {
-      cerr << "Failed to open " << argv[2] << " for writing" << endl;
-      return 1;
+      ifstream in(argv[1]);
+      if(!in.is_open())
+      {
+        cerr << "Failed to open " << argv[1] << " for reading" << endl;
+        return 1;
+      }
+      process_file(in, ms);
+      in.close();
     }
-    output_file(out, ms, argv[2]);
-    out.close();
-  }
-  
-  return 0;
+    
+    {
+      ofstream out(argv[2]);
+      if(!out.is_open())
+      {
+        cerr << "Failed to open " << argv[2] << " for writing" << endl;
+        return 1;
+      }
+      output_file(out, ms, argv[2]);
+      out.close();
+    }
+    
+    return 0;
 }
