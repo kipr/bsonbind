@@ -37,6 +37,17 @@ File format
  my_great_type key4
 ```
 
+There are also special directives that can be used to set options for the file:
+
+```
+# Set the C++ namespace
+%package name
+# The bind method shall not be generated
+%nobind
+# The unbind method shall not be generated
+%nounbind
+```
+
 Note: Empty lines and lines beginning with `#` are ignored.
 
 The extension for these files shall be `bsonbind`.
