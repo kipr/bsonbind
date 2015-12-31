@@ -223,8 +223,7 @@ namespace
     }
     else
     {
-      if(m.type == "int8_t" || m.type == "uint8_t") out << "bson_append_int8";
-      else if(m.type[0] == 'i' || m.type[0] == 'u') out << "bson_append_int32";
+      if(m.type[0] == 'i' || m.type[0] == 'u') out << "bson_append_int32";
       else if(m.type == "bool") out << "bson_append_bool";
       else if(m.type == "float" || m.type == "double") out << "bson_append_double";
       out << "(" << doc << ", " << (key_override.empty() ? "\"" + m.name + "\"" : key_override) << ", -1, " << call << ");";
@@ -254,8 +253,7 @@ namespace
     }
     else
     {
-      if(m.type == "int8_t" || m.type == "uint8_t") out << "BSON_TYPE_INT8";
-      else if(m.type[0] == 'i' || m.type[0] == 'u') out << "BSON_TYPE_INT32";
+      if(m.type[0] == 'i' || m.type[0] == 'u') out << "BSON_TYPE_INT32";
       else if(m.type == "bool") out << "BSON_TYPE_BOOL";
       else if(m.type == "float" || m.type == "double") out << "BSON_TYPE_DOUBLE";
     }
