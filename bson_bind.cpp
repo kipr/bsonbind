@@ -42,6 +42,7 @@ namespace
     bool vec;
     bool ext;
     string type;
+    string itype;
     string name;
   };
   
@@ -140,7 +141,8 @@ namespace
     ret.required = m.required;
     ret.vec = m.vec;
     ret.ext = it == conversions.end();
-    ret.type = ret.ext ? "struct " + m.type : it->second;
+    ret.type = ret.ext ? m.type : it->second;
+    ret.itype = ret.ext ? "struct " + m.type : it->second;
     ret.name = m.name;
     return ret;
   }
@@ -184,7 +186,7 @@ namespace
   {
     assert(!m.type.empty());
     assert(!m.name.empty());
-    auto type = m.type;
+    auto type = m.itype;
     out << "    ";
     if(!m.required) out << "bson_bind::option<";
     out << (m.vec ? "std::vector<" + type + ">" : type);
