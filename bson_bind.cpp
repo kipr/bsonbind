@@ -184,16 +184,10 @@ namespace
   {
     assert(!m.type.empty());
     assert(!m.name.empty());
-    if (m.ext)
-    {
-    	out << "    struct ";
-    }
-    else
-    {
-    	out << "    ";
-    }
+    auto type = (m.ext ? "struct " : "") + m.type;
+    out << "    ";
     if(!m.required) out << "bson_bind::option<";
-    out << (m.vec ? "std::vector<" + m.type + ">" : m.type);
+    out << (m.vec ? "std::vector<" + type + ">" : type);
     if(!m.required) out << ">";
     out << " " << m.name << ";" << endl;
   }
