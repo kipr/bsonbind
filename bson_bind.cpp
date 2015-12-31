@@ -297,7 +297,7 @@ namespace
           }
           out << "      arr = bson_new();" << endl
               << "      i = 0;" << endl
-              << "      for(std::vector<" << m.type << ">::iterator it = " << m.name << (m.required ? "" : ".unwrap()") << ".begin();" << endl
+              << "      for(std::vector<" << m.itype << ">::iterator it = " << m.name << (m.required ? "" : ".unwrap()") << ".begin();" << endl
               << "          it != " << m.name << (m.required ? "" : ".unwrap()") << ".end(); ++it, ++i)" << endl
               << "        " << bson_append_primitive(m, "std::to_string(i).c_str()", "(*it)", "arr") << endl
               << "      bson_append_array(ret, \"" << m.name << "\", -1, arr);" << endl
@@ -376,7 +376,7 @@ namespace
               << "          if(!bson_iter_init_find(&itt, arr, std::to_string(i).c_str())) break;" << endl
               << "          v = bson_iter_value(&itt);" << endl
               << "          " << bson_type_check(m, false, true) << " throw std::invalid_argument(\"key " << m.name << " child has the wrong type\");" << endl
-              << "          " << m.type << " tmp;" << endl
+              << "          " << m.itype << " tmp;" << endl
               << "          " << bson_read_primitive(m, "", "tmp") << endl
               << "          ret." << m.name << (m.required ? "" : ".unwrap()") << ".push_back(tmp);" << endl
               << "        }" << endl
