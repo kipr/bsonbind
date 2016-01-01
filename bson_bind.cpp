@@ -211,7 +211,9 @@ namespace
       
     if(m.ext)
     {
-      out << "bson_append_document(" << doc << ", " << (key_override.empty() ? "\"" + m.name + "\"" : key_override) << ", -1, " << call << ".bind());";
+      out << "t = " << call << ".bind(); ";
+      out << "bson_append_document(" << doc << ", " << (key_override.empty() ? "\"" + m.name + "\"" : key_override) << ", -1, t); ";
+      out << "bson_destroy(t); t = 0;";
     }
     else if(m.type == "std::string")
     {
@@ -285,7 +287,7 @@ namespace
     {
       out << "    bson_t *bind() {" << endl
           << "      bson_t *ret = bson_new();" << endl
-          << "      bson_t *arr;" << endl
+          << "      bson_t *arr, *t;" << endl
           << "      uint32_t i = 0;" << endl;
       for(const auto &m : ms)
       {
@@ -298,8 +300,8 @@ namespace
           out << "      arr = bson_new();" << endl
               << "      i = 0;" << endl
               << "      for(std::vector<" << m.itype << ">::iterator it = " << m.name << (m.required ? "" : ".unwrap()") << ".begin();" << endl
-              << "          it != " << m.name << (m.required ? "" : ".unwrap()") << ".end(); ++it, ++i)" << endl
-              << "        " << bson_append_primitive(m, "std::to_string(i).c_str()", "(*it)", "arr") << endl
+              << "          it != " << m.name << (m.required ? "" : ".unwrap()") << ".end(); ++it, ++i) {" << endl
+              << "        " << bson_append_primitive(m, "std::to_string(i).c_str()", "(*it)", "arr") << "}" << endl
               << "      bson_append_array(ret, \"" << m.name << "\", -1, arr);" << endl
               << "      bson_destroy(arr);";
           if(!m.required)
