@@ -1,5 +1,5 @@
-bson_bind
-=========
+bsonbind
+========
 
 
 BSON bind is a utility that generates C++ structs for descriptions of BSON.
