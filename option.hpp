@@ -103,7 +103,7 @@ namespace bson_bind
     
   private:
     bool _some;
-    uint8_t _t[sizeof(T)] __attribute__((aligned(8));
+    uint8_t _t[sizeof(T)] __attribute__((aligned(8)));
   };
   
   template<typename T>
