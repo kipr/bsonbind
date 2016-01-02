@@ -84,6 +84,15 @@ namespace bson_bind
       return *this;
     }
     
+    template<typename D>
+    option<T> &operator =(const D &rhs)
+    {
+      if(_some) reinterpret_cast<T *>(_t)->~T();
+      _some = true;
+      if(_some) new (_t) T(rhs);
+      return *this;
+    }
+
     option<T> &operator =(const option<T> &rhs)
     {
       if(_some) reinterpret_cast<T *>(_t)->~T();
