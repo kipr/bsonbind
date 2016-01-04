@@ -4,6 +4,12 @@
 #include <cstdint>
 #include <new>
 
+#ifdef _MSC_VER
+#define ALIGNED(decl, alignment) __declspec(align(alignment)) decl
+#else
+#define ALIGNED(decl, alignment) decl __attribute__((aligned(alignment)))
+#endif
+
 namespace bson_bind
 {
   template<typename T>
@@ -112,7 +118,7 @@ namespace bson_bind
     
   private:
     bool _some;
-    uint8_t _t[sizeof(T)] __attribute__((aligned(8)));
+    ALIGNED(uint8_t _t[sizeof(T)], 8);
   };
   
   template<typename T>
