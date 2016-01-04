@@ -345,7 +345,7 @@ namespace
           << "    }" << endl;
     }
     
-    void output_unbind(ostream &out, const vector<conv_member> &ms, const std::string &name)
+    void output_unbind(ostream &out, const vector<conv_member> &ms, const std::string &name, const bool gen_exceptions)
     {
       out << "    static " << name << " unbind(const bson_t *const bson) {" << endl
           << "      bson_iter_t it;" << endl
@@ -359,7 +359,11 @@ namespace
       for(const auto &m : ms)
       {
         out << "      found = bson_iter_init_find(&it, bson, \"" << m.name << "\");" << endl;
-        if(m.required)
+        if(!gen_exceptions && m.required)
+        {
+          out << "      {" << endl;
+        }
+        else if(m.required)
         {
           out << "      if(!found) throw std::invalid_argument(\"required key " << m.name << " not found in bson document\");" << endl
               << "      else {" << endl;
@@ -368,8 +372,11 @@ namespace
         {
           out << "      if(found) {" << endl;
         }
-        out << "        v = bson_iter_value(&it);" << endl
-            << "        " << bson_type_check(m, true,  true) << " throw std::invalid_argument(\"key " << m.name << " has the wrong type\");" << endl;
+        out << "        v = bson_iter_value(&it);" << endl;
+        if(gen_exceptions)
+        {
+          out << "        " << bson_type_check(m, true,  true) << " throw std::invalid_argument(\"key " << m.name << " has the wrong type\");" << endl;
+        }
         if(m.vec && m.type != "uint8_t")
         {
           out << "        arr = bson_new_from_data(v->value.v_doc.data, v->value.v_doc.data_len);" << endl
@@ -381,9 +388,11 @@ namespace
           }
           out << "        for(;; ++i) {" << endl
               << "          if(!bson_iter_init_find(&itt, arr, std::to_string(i).c_str())) break;" << endl
-              << "          v = bson_iter_value(&itt);" << endl
-              << "          " << bson_type_check(m, false, true) << " throw std::invalid_argument(\"key " << m.name << " child has the wrong type\");" << endl
-              << "          " << m.itype << " tmp;" << endl
+              << "          v = bson_iter_value(&itt);" << endl;
+          if(gen_exceptions) {
+            out << "          " << bson_type_check(m, false, true) << " throw std::invalid_argument(\"key " << m.name << " child has the wrong type\");" << endl;
+          }
+          out << "          " << m.itype << " tmp;" << endl
               << "          " << bson_read_primitive(m, "", "tmp") << endl
               << "          ret." << m.name << (m.required ? "" : ".unwrap()") << ".push_back(tmp);" << endl
               << "        }" << endl
@@ -457,6 +466,7 @@ namespace
       bool gen_unbind = true;
       bool gen_copy = true;
       bool gen_assign = true;
+      bool gen_exceptions = true;
       auto rms = ms;
       for(auto it = rms.begin(); it != rms.end();)
       {
@@ -466,6 +476,7 @@ namespace
           else if(it->type == "nobind") gen_bind = false;
           else if(it->type == "nounbind") gen_unbind = false;
           else if(it->type == "nocopy") gen_copy = false;
+          else if(it->type == "noexceptions") gen_exceptions = false;
           else if(it->type == "noassign") gen_assign = false;
           else
           {
@@ -481,7 +492,7 @@ namespace
       output_header(out, realname, conv, package);
       for(const auto &c : conv) output_member(out, c);
       if(gen_bind) output_bind(out, conv);
-      if(gen_unbind) output_unbind(out, conv, realname);
+      if(gen_unbind) output_unbind(out, conv, realname, gen_exceptions);
       output_default(out, realname);
       if(gen_copy) output_copy(out, conv, realname);
       if(gen_assign) output_assign(out, conv, realname);
